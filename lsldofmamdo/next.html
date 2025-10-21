@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Puzzle — Foura</title>
+    <style>
+        :root {
+            --bg: #a7c9ae;
+            --panel: #7ba383;
+            --tile: #ffffa5;
+            --tile-text: #1b1b1b;
+            --accent: #ffffff;
+            --gap: 12px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0
+        }
+
+        html,
+        body {
+            height: 100%
+        }
+
+        body {
+            font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+            background: linear-gradient(180deg, var(--bg), #cfe6d6 120%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .wrap {
+            width: min(94vw, 480px);
+            background: rgba(255, 255, 255, 0.05);
+            padding: 18px;
+            border-radius: 14px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 18px;
+            margin-bottom: 10px;
+            color: #083b2a;
+            text-align: center;
+        }
+
+        .board-area {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .puzzle {
+            --size: min(360px, 86vw);
+            width: var(--size);
+            height: var(--size);
+            background: var(--panel);
+            padding: calc(var(--gap));
+            border-radius: 12px;
+            box-shadow: inset 0 6px 0 rgba(0, 0, 0, 0.06);
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: var(--gap);
+            touch-action: manipulation;
+        }
+
+        .cell {
+            background: transparent;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 2.2rem;
+            color: var(--tile-text);
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .tile {
+            width: 100%;
+            height: 100%;
+            background: var(--tile);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform .18s ease, box-shadow .12s ease;
+            box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
+            cursor: pointer;
+        }
+
+        .tile:active {
+            transform: translateY(2px);
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
+        }
+
+        .tile.empty {
+            background: rgba(0, 0, 0, 0.08);
+            box-shadow: none;
+            cursor: default;
+        }
+
+        .controls {
+            margin-top: 14px;
+            width: 100%;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        button.btn {
+            padding: 10px 16px;
+            font-size: 15px;
+            border-radius: 9px;
+            border: none;
+            background: var(--accent);
+            cursor: pointer;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+        }
+
+        button.ghost {
+            background: transparent;
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            color: #083b2a;
+        }
+
+        #message {
+            margin-top: 14px;
+            font-size: 1.05rem;
+            color: #083b2a;
+            min-height: 1.3rem;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        /* kichik ekranlar uchun o'lchamlarni kamaytirish */
+        @media (max-width:420px) {
+            .tile {
+                font-size: 1.3rem;
+            }
+
+            h1 {
+                font-size: 16px;
+            }
+        }
+
+        /* accessibility focus */
+        .tile:focus {
+            outline: 3px solid rgba(0, 0, 0, 0.08);
+            transform: translateY(-2px);
+        }
+
+        .meta {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #0b3f2a;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <h1>Foura — 3×3 Puzzle (tap to move)</h1>
+
+        <div class="board-area">
+            <div id="puzzle" class="puzzle" aria-label="Puzzle board" role="grid"></div>
+
+            <div class="controls">
+                <button id="shuffle" class="btn">Aralashtirish</button>
+                <button id="solve-sim" class="btn ghost">Namuna</button>
+                <button id="reset" class="btn ghost">Qayta boshlash</button>
+            </div>
+
+            <div id="message"></div>
+            <div class="meta">Tap / click tile near the empty square. Use arrow keys too.</div>
+        </div>
+    </div>
+
+    <script>
+        // 3x3 sliding puzzle — click/tap to move. Responsive; mobile taps supported.
+        (function () {
+            const puzzleEl = document.getElementById('puzzle');
+            const shuffleBtn = document.getElementById('shuffle');
+            const resetBtn = document.getElementById('reset');
+            const sampleBtn = document.getElementById('solve-sim');
+            const messageEl = document.getElementById('message');
+
+            // state: array of 9 values: numbers 1..8 and null for empty
+            let state = [];
+            const size = 3;
+            const total = size * size;
+
+            function createSolved() {
+                const arr = [];
+                for (let i = 1; i < total; i++) arr.push(i);
+                arr.push(null);
+                return arr;
+            }
+
+            function render() {
+                puzzleEl.innerHTML = '';
+                state.forEach((val, idx) => {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.setAttribute('role', 'gridcell');
+                    cell.setAttribute('data-index', idx);
+                    if (val === null) {
+                        const empty = document.createElement('div');
+                        empty.className = 'tile empty';
+                        empty.setAttribute('aria-hidden', 'true');
+                        cell.appendChild(empty);
+                    } else {
+                        const tile = document.createElement('div');
+                        tile.className = 'tile';
+                        tile.tabIndex = 0; // focusable
+                        tile.textContent = val;
+                        tile.dataset.value = val;
+                        tile.addEventListener('click', onTileClick);
+                        tile.addEventListener('keydown', function (e) {
+                            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onTileClick.call(this, e); }
+                        });
+                        cell.appendChild(tile);
+                    }
+                    puzzleEl.appendChild(cell);
+                });
+            }
+
+            function indexToPos(i) {
+                return { r: Math.floor(i / size), c: i % size };
+            }
+
+            function isAdjacent(i1, i2) {
+                const a = indexToPos(i1), b = indexToPos(i2);
+                const dr = Math.abs(a.r - b.r), dc = Math.abs(a.c - b.c);
+                return (dr + dc) === 1;
+            }
+
+            function onTileClick(e) {
+                const cell = this.parentElement;
+                const idx = Number(cell.dataset.index);
+                const emptyIndex = state.indexOf(null);
+                if (isAdjacent(idx, emptyIndex)) {
+                    // swap
+                    [state[idx], state[emptyIndex]] = [state[emptyIndex], state[idx]];
+                    render();
+                    checkWin();
+                } else {
+                    // small feedback: pulse
+                    this.animate([{ transform: 'scale(1)' }, { transform: 'scale(0.97)' }, { transform: 'scale(1)' }], { duration: 120 });
+                }
+            }
+
+            function shuffleArray(arr) {
+                // Fisher-Yates
+                for (let i = arr.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [arr[i], arr[j]] = [arr[j], arr[i]];
+                }
+            }
+
+            function countInversions(arr) {
+                const list = arr.filter(x => x !== null);
+                let inv = 0;
+                for (let i = 0; i < list.length; i++) {
+                    for (let j = i + 1; j < list.length; j++) {
+                        if (list[i] > list[j]) inv++;
+                    }
+                }
+                return inv;
+            }
+
+            function isSolvable(arr) {
+                // For odd grid width (3) — solvable if number of inversions is even
+                return (countInversions(arr) % 2) === 0;
+            }
+
+            function shuffleUntilSolvable() {
+                do {
+                    const arr = createSolved().slice();
+                    shuffleArray(arr);
+                    state = arr;
+                } while (!isSolvable(state) || isSolvedState());
+            }
+
+            function isSolvedState() {
+                for (let i = 0; i < total - 1; i++) {
+                    if (state[i] !== i + 1) return false;
+                }
+                return state[total - 1] === null;
+            }
+
+            function checkWin() {
+                if (isSolvedState()) {
+                    messageEl.textContent = 'Tabriklaymiz! Siz boshlandi 🎉';
+                    // small celebration animation
+                    puzzleEl.animate([
+                        { transform: 'scale(1)' },
+                        { transform: 'scale(1.02)' },
+                        { transform: 'scale(1)' }
+                    ], { duration: 420 });
+                } else {
+                    messageEl.textContent = '';
+                }
+            }
+
+            function resetToSolved() {
+                state = createSolved();
+                render();
+                messageEl.textContent = '';
+            }
+
+            // keyboard controls: arrow keys move tile into empty
+            function onKey(e) {
+                const empty = state.indexOf(null);
+                const pos = indexToPos(empty);
+                let target = null;
+                if (e.key === 'ArrowUp') {
+                    // move tile from below up: target is row+1 col
+                    if (pos.r + 1 < size) target = (pos.r + 1) * size + pos.c;
+                } else if (e.key === 'ArrowDown') {
+                    if (pos.r - 1 >= 0) target = (pos.r - 1) * size + pos.c;
+                } else if (e.key === 'ArrowLeft') {
+                    if (pos.c + 1 < size) target = pos.r * size + (pos.c + 1);
+                } else if (e.key === 'ArrowRight') {
+                    if (pos.c - 1 >= 0) target = pos.r * size + (pos.c - 1);
+                } else return;
+                e.preventDefault();
+                if (target !== null) {
+                    [state[empty], state[target]] = [state[target], state[empty]];
+                    render();
+                    checkWin();
+                }
+            }
+
+            // sample: show solved -> small scramble then solved (visual demo)
+            async function sampleAnimation() {
+                resetToSolved();
+                await sleep(160);
+                for (let i = 0; i < 12; i++) {
+                    // make a random valid adjacent move
+                    const empty = state.indexOf(null);
+                    const possible = [];
+                    for (let j = 0; j < total; j++) if (isAdjacent(j, empty)) possible.push(j);
+                    const pick = possible[Math.floor(Math.random() * possible.length)];
+                    [state[empty], state[pick]] = [state[pick], state[empty]];
+                    render();
+                    await sleep(90);
+                }
+                messageEl.textContent = 'Mana namuna — endi sinab ko‘ring!';
+            }
+
+            function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
+
+            // event listeners
+            shuffleBtn.addEventListener('click', () => {
+                shuffleUntilSolvable();
+                render();
+                messageEl.textContent = 'Aralashtirildi — o‘ynang!';
+            });
+
+            resetBtn.addEventListener('click', () => {
+                resetToSolved();
+            });
+
+            sampleBtn.addEventListener('click', () => {
+                sampleAnimation();
+            });
+
+            document.addEventListener('keydown', onKey);
+
+            // init
+            resetToSolved();
+            // auto-shuffle once at start but not too hard
+            shuffleUntilSolvable();
+            render();
+        })();
+    </script>
+</body>
+
+</html>
